@@ -31,4 +31,7 @@ test = test.resample('D').mean()
 
 
 models = tools.ForecastModels(train, test, "Count")
-models.NaiveForecast()
+#models.NaiveForecast()
+#models.SimpleAverage()
+#models.MovingAverage(60)
+models.SimpleExponentialSmoothing(0.1)
