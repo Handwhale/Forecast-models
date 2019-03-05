@@ -32,6 +32,12 @@ class ForecastModels:
         plt.title(label)
         plt.show()
 
+    def _SESEquation(self, alpha, actual, prev_forecast, prev_trend_forecast=0):
+        return alpha * actual + (1 - alpha) * (prev_forecast - prev_trend_forecast)
+
+    def _TrendEquation(self, betta, ses_result, prev_forecast, prev_ses_forecast):
+        return betta * (ses_result - prev_ses_forecast) + (1 - betta) * prev_forecast
+
     def NaiveForecast(self):
         self.data_frame["Naive"] = self.train_data[self.value_column][len(self.train_data[self.value_column]) - 1]
         self._set_rmse("Naive")
@@ -48,32 +54,62 @@ class ForecastModels:
         self._plot("MovingAverage", "Moving Average Forecast", self.rmse_info.RMSE[-1])
 
     def SimpleExponentialSmoothing(self, a):
-
         self.train_calc_data["SimpleExponentialSmoothing"] = pd.Series()
 
-        # Calc known values
+        # Set up 0 index
         self.train_calc_data["SimpleExponentialSmoothing"].iloc[0] = self.train_calc_data[self.value_column][0]
+
+        # Training model
         for i in range(1, len(self.train_calc_data["SimpleExponentialSmoothing"])):
             self.train_calc_data["SimpleExponentialSmoothing"].iloc[i] = \
-                self._SES(a, self.train_calc_data[self.value_column][i - 1],
-                          self.train_calc_data["SimpleExponentialSmoothing"][i - 1])
+                self._SESEquation(a,
+                                  self.train_calc_data[self.value_column][i - 1],
+                                  self.train_calc_data["SimpleExponentialSmoothing"][i - 1])
 
         # Performing forecasting
         self.data_frame["SimpleExponentialSmoothing"] = \
-            self._SES(a, self.train_calc_data[self.value_column][-1],
-                      self.train_calc_data["SimpleExponentialSmoothing"][-1])
+            self._SESEquation(a,
+                              self.train_calc_data[self.value_column][-1],
+                              self.train_calc_data["SimpleExponentialSmoothing"][-1])
 
-        # print(self.data_frame["SimpleExponentialSmoothing"])
-
+        # Output
         self._set_rmse("SimpleExponentialSmoothing")
         self._plot("SimpleExponentialSmoothing", "Simple Exponential Smoothing Forecast", self.rmse_info.RMSE[-1])
 
-    def _SES(self, alpha, actual, prev_forecast):
-        return alpha * actual + (1 - alpha) * prev_forecast
+    def HoltModel(self, alpha, betta):
+        self.train_calc_data["HoltSESEquation"] = pd.Series()
+        self.train_calc_data["HoltTrendEquation"] = pd.Series()
+        self.train_calc_data["HoltModel"] = pd.Series()
 
-    def HoltModel(self):
-        pass
+        # Set up 0 index
+        self.train_calc_data["HoltSESEquation"].iloc[0] = self.train_calc_data[self.value_column][0]
+        self.train_calc_data["HoltTrendEquation"].iloc[0] = 0
+
+        # Training model
+        for i in range(1, len(self.train_calc_data["HoltModel"])):
+            self.train_calc_data["HoltSESEquation"].iloc[i] = \
+                self._SESEquation(alpha,
+                                  self.train_calc_data[self.value_column][i - 1],
+                                  self.train_calc_data["HoltSESEquation"][i - 1])
+
+            self.train_calc_data["HoltTrendEquation"].iloc[i] = \
+                self._TrendEquation(betta,
+                                    self.train_calc_data["HoltSESEquation"][i],
+                                    self.train_calc_data["HoltTrendEquation"][i - 1],
+                                    self.train_calc_data["HoltSESEquation"][i - 1])
+
+            self.train_calc_data["HoltModel"].iloc[i] = self.train_calc_data["HoltSESEquation"].iloc[i] + \
+                                                        self.train_calc_data["HoltTrendEquation"].iloc[i]
+
+        # Performing forecasting
+        self.data_frame["HoltModel"] = pd.Series()
+        for i in range(0, len(self.test_data[self.value_column])):
+            self.data_frame["HoltModel"].iloc[i] = self.train_calc_data["HoltSESEquation"].iloc[-1] + \
+                                                   self.train_calc_data["HoltTrendEquation"].iloc[-1] * (i + 1)
+
+        # Output
+        self._set_rmse("HoltModel")
+        self._plot("HoltModel", "Holt Model Forecast", self.rmse_info.RMSE[-1])
 
     def HoltWintersModel(self):
         pass
-
