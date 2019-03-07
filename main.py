@@ -1,6 +1,4 @@
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 import tools
 
 # Get data
@@ -35,8 +33,11 @@ test = test.resample('D').mean()
 
 
 models = tools.ForecastModels(train, test, "Count")
-# models.NaiveForecast()
-# models.SimpleAverage()
-# models.MovingAverage(60)
-# models.SimpleExponentialSmoothing(0.1)
-models.HoltModel(.1, .3)
+
+models.NaiveForecast()
+models.SimpleAverage()
+models.MovingAverage(60)
+models.SimpleExponentialSmoothing(0.2)
+models.HoltModel(.1, .1)
+models.HoltWinter(0.5, 0.3, 0.3, 7) # season = 7
+models.RMSEResults()

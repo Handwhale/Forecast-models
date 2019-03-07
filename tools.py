@@ -1,11 +1,6 @@
 import pandas as pd
-import numpy as np
+
 import matplotlib.pyplot as plt
-
-
-def RMSE(x, y):
-    ((x - y) ** 2).mean() ** .5
-
 
 class ForecastModels:
     def __init__(self, train_data, test_data, value_column):
@@ -20,7 +15,8 @@ class ForecastModels:
 
     def _set_rmse(self, forecast_name):
         rmse = ((self.data_frame[forecast_name] - self.test_data) ** 2).mean() ** .5
-        self.rmse_info.loc[-1] = [forecast_name, rmse]
+        self.rmse_info.loc[len(self.rmse_info)] = [forecast_name, rmse]
+        return rmse
 
         print("{} RMSE: {:.2f}".format(forecast_name, rmse))
 
@@ -44,58 +40,57 @@ class ForecastModels:
         return gamma * (actual - ses_result) + (1 - gamma) * prev_forecast
 
     def NaiveForecast(self):
-        self.data_frame["Naive"] = self.train_data[self.value_column][len(self.train_data[self.value_column]) - 1]
-        self._set_rmse("Naive")
-        self._plot("Naive", "Naive Forecast", self.rmse_info.RMSE[-1])
+        self.data_frame["Naive"] = self.train_data[len(self.train_data) - 1]
+        val = self._set_rmse("Naive")
+        self._plot("Naive", "Naive Forecast", val)
 
     def SimpleAverage(self):
-        self.data_frame["SimpleAverage"] = self.train_data[self.value_column].mean()
-        self._set_rmse("SimpleAverage")
-        self._plot("SimpleAverage", "Simple Average Forecast", self.rmse_info.RMSE[-1])
+        self.data_frame["SimpleAverage"] = self.train_data.mean()
+        val = self._set_rmse("SimpleAverage")
+        self._plot("SimpleAverage", "Simple Average Forecast", val)
 
     def MovingAverage(self, frame_size):
-        self.data_frame["MovingAverage"] = self.train_data[self.value_column].rolling(frame_size).mean().iloc[-1]
-        self._set_rmse("MovingAverage")
-        self._plot("MovingAverage", "Moving Average Forecast", self.rmse_info.RMSE[-1])
+        self.data_frame["MovingAverage"] = self.train_data.rolling(frame_size).mean().iloc[-1]
+        val = self._set_rmse("MovingAverage")
+        self._plot("MovingAverage", "Moving Average Forecast", val)
 
     def SimpleExponentialSmoothing(self, alpha):
         # checked
         self.train_calc_data["SimpleExponentialSmoothing"] = pd.Series()
 
         # Set up 0 index
-        self.train_calc_data["SimpleExponentialSmoothing"].iloc[0] = self.train_calc_data[self.value_column][0]
+        self.train_calc_data["SimpleExponentialSmoothing"].iloc[0] = self.train_data[0]
 
         # Training model
         for i in range(1, len(self.train_calc_data["SimpleExponentialSmoothing"])):
             self.train_calc_data["SimpleExponentialSmoothing"].iloc[i] = \
                 self._SESEquation(alpha,
-                                  self.train_calc_data[self.value_column][i - 1],
+                                  self.train_data[i - 1],
                                   self.train_calc_data["SimpleExponentialSmoothing"][i - 1])
 
         # Performing forecasting
         self.data_frame["SimpleExponentialSmoothing"] = \
             self._SESEquation(alpha,
-                              self.train_calc_data[self.value_column][-1],
+                              self.train_data[-1],
                               self.train_calc_data["SimpleExponentialSmoothing"][-1])
 
         # Output
-        self._set_rmse("SimpleExponentialSmoothing")
-        self._plot("SimpleExponentialSmoothing", "Simple Exponential Smoothing Forecast", self.rmse_info.RMSE[-1])
-
+        val = self._set_rmse("SimpleExponentialSmoothing")
+        self._plot("SimpleExponentialSmoothing", "Simple Exponential Smoothing Forecast", val)
 
     def HoltModel(self, alpha, beta):
         # checked
         self.train_calc_data["HoltModel"] = pd.Series()
 
-        self.train_calc_data["HoltModel"].iloc[0] = self.train_calc_data[self.value_column][0]
+        self.train_calc_data["HoltModel"].iloc[0] = self.train_data[0]
 
-        for i in range(1, len(self.train_calc_data[self.value_column])):
+        for i in range(1, len(self.train_data)):
             if i == 1:
-                level = self.train_calc_data[self.value_column][0]
-                trend = self.train_calc_data[self.value_column][1] - self.train_calc_data[self.value_column][0]
+                level = self.train_data[0]
+                trend = self.train_data[1] - self.train_data[0]
 
             prev_level = level
-            level = alpha *  self.train_calc_data[self.value_column][i] + (1 - alpha) * (level + trend)
+            level = alpha * self.train_data[i] + (1 - alpha) * (level + trend)
             trend = beta * (level - prev_level) + (1 - beta) * trend
             self.train_calc_data["HoltModel"].iloc[i] = level + trend
 
@@ -106,75 +101,34 @@ class ForecastModels:
             self.data_frame["HoltModel"].iloc[i] = level + trend * (i + 1)
 
         # Output
-        self._set_rmse("HoltModel")
-        self._plot("HoltModel", "Holt Model Forecast", self.rmse_info.RMSE[-1])
+        val = self._set_rmse("HoltModel")
+        self._plot("HoltModel", "Holt Model Forecast", val)
 
-
-    def HoltWintersModel(self, alpha, beta, gamma, season_cycle):
-        self.train_calc_data["HoltWintersSESEquation"] = pd.Series()
-        self.train_calc_data["HoltWintersTrendEquation"] = pd.Series()
-        self.train_calc_data["HoltWintersSeasonEquation"] = pd.Series()
-        self.train_calc_data["HoltWintersModel"] = pd.Series()
-
+    def HoltWinter(self, alpha, beta, gamma, season_cycle):
+        self.train_calc_data["WinterHolt"] = pd.Series()
         # Set up 0 index
-        self.train_calc_data["HoltWintersSESEquation"].iloc[0] = self.train_calc_data[self.value_column][0]
-        self.train_calc_data["HoltWintersTrendEquation"].iloc[0] = \
-            self._TrendEquation(beta,
-                                self.train_calc_data[self.value_column][0],
-                                0,
-                                self.train_calc_data[self.value_column][0])
-        self.train_calc_data["HoltWintersSeasonEquation"].iloc[0] = \
-            self._SeasonEquation(gamma,
-                                 self.train_calc_data[self.value_column][0],
-                                 self.train_calc_data[self.value_column][0],
-                                 0)
+        level = self.train_data[0]
+        trend = self.train_data[1] - self.train_data[0]
+        seasonals = []
+        for j in range(season_cycle):
+            seasonals.append(self.train_data[j + season_cycle] - self.train_data[j])
 
-        # Training model
-        for i in range(1, len(self.train_calc_data["HoltWintersModel"])):
-            current_season_index = season_cycle if i - season_cycle >= 0 else 0
-            test_val = self.train_calc_data["HoltWintersSeasonEquation"][i - current_season_index]
+        for i in range(len(self.train_data)):
+            prev_level = level
+            level = alpha * (self.train_data[i] - seasonals[i % season_cycle]) + (1 - alpha) * (prev_level + trend)
+            trend = beta * (level - prev_level) + (1 - beta) * trend
+            seasonals[i % season_cycle] = gamma * (self.train_data[i] - level) + \
+                                          (1 - gamma) * seasonals[i % season_cycle]
+            self.train_calc_data["WinterHolt"].iloc[i] = level + trend + seasonals[i % season_cycle]
 
-            self.train_calc_data["HoltWintersSESEquation"].iloc[i] = \
-                self._SESEquation(alpha,
-                                  self.train_calc_data[self.value_column][i - 1],
-                                  self.train_calc_data["HoltWintersSESEquation"][i - 1],
-                                  self.train_calc_data["HoltWintersSeasonEquation"][i - 1 - current_season_index])
-
-            self.train_calc_data["HoltWintersTrendEquation"].iloc[i] = \
-                self._TrendEquation(beta,
-                                    self.train_calc_data["HoltWintersSESEquation"][i],
-                                    self.train_calc_data["HoltWintersTrendEquation"][i - 1],
-                                    self.train_calc_data["HoltWintersSESEquation"][i - 1])
-
-            self.train_calc_data["HoltWintersSeasonEquation"].iloc[i] = \
-                self._SeasonEquation(gamma,
-                                     self.train_calc_data[self.value_column][i - 1],
-                                     self.train_calc_data["HoltWintersSESEquation"][i - 1],
-                                     self.train_calc_data["HoltWintersSeasonEquation"][i - current_season_index])
-
-            self.train_calc_data["HoltWintersModel"].iloc[i] = \
-                self.train_calc_data["HoltWintersSESEquation"].iloc[i] + \
-                self.train_calc_data["HoltWintersTrendEquation"].iloc[i] + \
-                self.train_calc_data["HoltWintersSeasonEquation"][i + 1 - current_season_index]
-
-        # plt.figure(figsize=(20, 10))
-        # plt.plot(self.train_data.index, self.train_data[self.value_column], label='Train')
-        # plt.plot(self.test_data.index, self.test_data[self.value_column], label='Test')
-        # plt.plot(self.train_calc_data.index, self.train_calc_data["HoltWintersModel"], label="HoltWintersModel")
-        # plt.legend(loc='best')
-        # plt.title("LELE")
-        # plt.show()
-
-        print(self.train_calc_data["HoltWintersSESEquation"])
-
+        self.data_frame["WinterHolt"] = pd.Series()
         # Performing forecasting
-        # self.data_frame["HoltWintersModel"] = pd.Series()
-        # for i in range(0, len(self.test_data[self.value_column])):
-        #     self.data_frame["HoltWintersModel"].iloc[i] = \
-        #         self.train_calc_data["HoltSESEquation"].iloc[-1] + \
-        #         self.train_calc_data["HoltTrendEquation"].iloc[-1] * (i + 1) + \
-        #         self.train_calc_data["HoltWintersSeasonEquation"].iloc[-1 ]
+        for i in range(len(self.test_data)):
+            self.data_frame["WinterHolt"].iloc[i] = level + trend * (i + 1) + seasonals[i % season_cycle]
 
         # Output
-        # self._set_rmse("HoltWintersModel")
-        # self._plot("HoltWintersModel", "Holt-Winters Model Forecast", self.rmse_info.RMSE[-1])
+        val = self._set_rmse("WinterHolt")
+        self._plot("WinterHolt", "Winter Holt Model Forecast", val)
+
+    def RMSEResults(self):
+        print(self.rmse_info)
