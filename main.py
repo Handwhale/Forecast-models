@@ -34,10 +34,12 @@ test = test.resample('D').mean()
 
 models = tools.ForecastModels(train, test, "Count")
 
-models.NaiveForecast()
-models.SimpleAverage()
-models.MovingAverage(60)
-models.SimpleExponentialSmoothing(0.2)
-models.HoltModel(.1, .1)
-models.HoltWinter(0.5, 0.3, 0.3, 7) # season = 7
+# models.NaiveForecast()
+# models.SimpleAverage()
+# models.MovingAverage(60)
+# models.SimpleExponentialSmoothing(0.2)
+# models.HoltModel(.1, .1)
+models.HoltWinter(0.5, 0.3, 0.3, 7)  # season = 7
 models.RMSEResults()
+
+# TODO: симплекс метод???

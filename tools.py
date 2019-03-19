@@ -1,6 +1,7 @@
 import pandas as pd
-
+import numpy as np
 import matplotlib.pyplot as plt
+
 
 class ForecastModels:
     def __init__(self, train_data, test_data, value_column):
@@ -16,16 +17,15 @@ class ForecastModels:
     def _set_rmse(self, forecast_name):
         rmse = ((self.data_frame[forecast_name] - self.test_data) ** 2).mean() ** .5
         self.rmse_info.loc[len(self.rmse_info)] = [forecast_name, rmse]
+        # print("{} RMSE: {:.2f}".format(forecast_name, rmse))
         return rmse
 
-        print("{} RMSE: {:.2f}".format(forecast_name, rmse))
-
     def _plot(self, column_name, label, rmse_value):
-        plt.figure(figsize=(20, 10))
+        plt.figure(figsize=(15, 8))
         plt.plot(self.train_data.index, self.train_data, label='Train')
-        plt.plot(self.test_data.index, self.test_data, label='Test')
+        # plt.plot(self.test_data.index, self.test_data, label='Test')
         plt.plot(self.data_frame.index, self.data_frame[column_name], label=column_name)
-        plt.figtext(0.13, .78, "RMSE = {0:.2f}".format(rmse_value))
+        # plt.figtext(0.13, .78, "RMSE = {0:.2f}".format(rmse_value))
         plt.legend(loc='best')
         plt.title(label)
         plt.show()
@@ -54,7 +54,7 @@ class ForecastModels:
         val = self._set_rmse("MovingAverage")
         self._plot("MovingAverage", "Moving Average Forecast", val)
 
-    def SimpleExponentialSmoothing(self, alpha):
+    def SimpleExponentialSmoothing(self, alpha, grid_search=False):
         # checked
         self.train_calc_data["SimpleExponentialSmoothing"] = pd.Series()
 
@@ -75,10 +75,13 @@ class ForecastModels:
                               self.train_calc_data["SimpleExponentialSmoothing"][-1])
 
         # Output
-        val = self._set_rmse("SimpleExponentialSmoothing")
-        self._plot("SimpleExponentialSmoothing", "Simple Exponential Smoothing Forecast", val)
+        if not grid_search:
+            val = self._set_rmse("SimpleExponentialSmoothing")
+            self._plot("SimpleExponentialSmoothing", "Simple Exponential Smoothing Forecast", val)
+        else:
+            return self._set_rmse("SimpleExponentialSmoothing")
 
-    def HoltModel(self, alpha, beta):
+    def HoltModel(self, alpha, beta, grid_search=False):
         # checked
         self.train_calc_data["HoltModel"] = pd.Series()
 
@@ -101,10 +104,13 @@ class ForecastModels:
             self.data_frame["HoltModel"].iloc[i] = level + trend * (i + 1)
 
         # Output
-        val = self._set_rmse("HoltModel")
-        self._plot("HoltModel", "Holt Model Forecast", val)
+        if not grid_search:
+            val = self._set_rmse("HoltModel")
+            self._plot("HoltModel", "Holt Model Forecast", val)
+        else:
+            return self._set_rmse("HoltModel")
 
-    def HoltWinter(self, alpha, beta, gamma, season_cycle):
+    def HoltWinter(self, alpha, beta, gamma, season_cycle, grid_search=False):
         self.train_calc_data["WinterHolt"] = pd.Series()
         # Set up 0 index
         level = self.train_data[0]
@@ -127,8 +133,94 @@ class ForecastModels:
             self.data_frame["WinterHolt"].iloc[i] = level + trend * (i + 1) + seasonals[i % season_cycle]
 
         # Output
-        val = self._set_rmse("WinterHolt")
-        self._plot("WinterHolt", "Winter Holt Model Forecast", val)
+        if not grid_search:
+            val = self._set_rmse("WinterHolt")
+            self._plot("WinterHolt", "Winter Holt Model Forecast", val)
+        else:
+            return self._set_rmse("WinterHolt")
 
     def RMSEResults(self):
         print(self.rmse_info)
+
+
+class GridSearch:
+    def __init__(self, fc_models):
+
+        self.fc_models = fc_models
+
+    def SimpleExp(self):
+        max_param = 0
+        max_result = 100000
+
+        for a in np.arange(0.0, 1.1, 0.01):
+            result = self.fc_models.SimpleExponentialSmoothing(a, grid_search=True)
+            if result < max_result:
+                max_result = result
+                max_param = a
+
+        print("Simple Exp optimal param = {} with the result {}".format(max_param, max_result))
+        return max_param
+
+    def DoubleExp(self):
+        max_param_a = 0
+        max_param_b = 0
+        max_result = 100000
+
+        for a in np.arange(0.0, 1.1, 0.01):
+            for b in np.arange(0.0, 1.1, 0.01):
+                result = self.fc_models.HoltModel(a, b, grid_search=True)
+                if result < max_result:
+                    max_result = result
+                    max_param_a = a
+                    max_param_b = b
+
+        print("Simple Exp optimal param = {} and {} with the result {}".format(max_param_a, max_param_b, max_result))
+
+    def TripleExp(self):
+        max_param_a = 0
+        max_param_b = 0
+        max_param_c = 0
+        max_result = float("inf")
+
+        simple_range = np.arange(0.0, 1.1, 0.1)
+
+        for a in simple_range:
+            for b in simple_range:
+                for c in simple_range:
+                    result = self.fc_models.HoltWinter(a, b, c, 12 * 4, grid_search=True)
+                    if (result) < max_result:
+                        max_result = result
+                        max_param_a = a
+                        max_param_b = b
+                        max_param_c = c
+
+        print("1st iteration grid search: {} and {} and {} with the result {}".format(max_param_a, max_param_b,
+                                                                                      max_param_c, max_result))
+
+        step = 0.01
+
+        a_start_range = (max_param_a - 0.1) if max_param_a - 0.1 >= 0 else 0
+        b_start_range = (max_param_b - 0.1) if max_param_b - 0.1 >= 0 else 0
+        c_start_range = (max_param_c - 0.1) if max_param_c - 0.1 >= 0 else 0
+
+        a_end_range = (max_param_a + 0.1 + step) if max_param_a + 0.1 <= 1 else 0
+        b_end_range = (max_param_b + 0.1 + step) if max_param_b + 0.1 <= 1 else 0
+        c_end_range = (max_param_c + 0.1 + step) if max_param_c + 0.1 <= 1 else 0
+
+        a_range = np.arange(a_start_range, a_end_range, step)
+        b_range = np.arange(b_start_range, b_end_range, step)
+        c_range = np.arange(c_start_range, c_end_range, step)
+
+        for a in a_range:
+            for b in b_range:
+                for c in c_range:
+                    result = self.fc_models.HoltWinter(a, b, c, 12 * 4, grid_search=True)
+                    print("{} nd {} nd {} result {}".format(a, b, c, result))
+                    if (result) < max_result:
+                        max_result = result
+                        max_param_a = a
+                        max_param_b = b
+                        max_param_c = c
+
+        print("2nd iteration grid search: {} and {} and {} with the result {}".format(max_param_a, max_param_b,
+                                                                                      max_param_c, max_result))
